@@ -1,0 +1,1 @@
+# Bird class with jump and gravity mechanics
