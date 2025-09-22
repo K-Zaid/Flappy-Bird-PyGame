@@ -4,6 +4,7 @@ from bird import Bird
 from base import Base
 from pipe import Pipe
 from utils import check_collision, passed_pipe, Button
+from leaderboard import top_scores, add_score
 
 class Game:
     def __init__(self):
@@ -14,10 +15,10 @@ class Game:
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Anivia SkillShot Dodging")
         self.clock = pygame.time.Clock()
-        self.state = "menu" # possible states: menu, playing, game_over
+        self.state = "menu" # possible states: menu, leaderboard, playing, game_over
 
         # create game objects
-        self.bird = Bird(50, self.height//2)
+        self.bird = Bird(50, self.height//2 - 10)
         self.base = Base(self.height - 100, 5, self.width)
         self.pipes = [Pipe(self.width, self.base.y)]
 
@@ -33,10 +34,17 @@ class Game:
 
         # buttons
         font = pygame.font.SysFont("Arial", 30)
-        self.start_button = Button(self.width//2 - 60, 300, 120, 50, "Start", font)
-        self.quit_button = Button(self.width//2 - 60, 400, 120, 50, "Quit", font)
-        self.restart_button = Button(self.width//2 - 60, 300, 120, 50, "Restart", font)
-        self.menu_button = Button(self.width//2 - 60, 400, 120, 50, "Menu", font)
+        self.start_button = Button(self.width//2 - 60, 250, 120, 50, "Start", font)
+        self.leaderboard_button = Button(self.width//2 - 60, 350, 120, 50, "Leaderboard", font)
+        self.leaderboard_back_button = Button(0, self.height - 50, 120, 50, "Back", font)
+        self.quit_button = Button(self.width//2 - 60, 450, 120, 50, "Quit", font)
+        self.restart_button = Button(self.width//2 - 60, 350, 120, 50, "Restart", font)
+        self.menu_button = Button(self.width//2 - 60, 450, 120, 50, "Menu", font)
+
+        # variables to get name for leaderboard
+        self.name_input_active = False
+        self.player_name = ""
+        self.input_font = pygame.font.SysFont("Arial", 30)
 
     def run(self):
         # main game loop skeleton
@@ -46,6 +54,8 @@ class Game:
 
             if self.state == "menu":
                 self.draw_menu()
+            elif self.state == "leaderboard":
+                self.draw_leaderboard()
             elif self.state == "playing":
                 self.update() # move bird, pipes, base & check collisions
                 self.draw() # draw everything
@@ -63,18 +73,56 @@ class Game:
                 if self.start_button.is_clicked(event) or (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE):
                     self.reset_game()
                     self.state = "playing"
+                if self.leaderboard_button.is_clicked(event):
+                    self.state = "leaderboard"
                 if self.quit_button.is_clicked(event):
                     self.running = False
+            elif self.state == "leaderboard":
+                if self.leaderboard_back_button.is_clicked(event):
+                    self.state = "menu"
             elif self.state == "playing":
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         self.bird.jump()
             elif self.state == "game_over":
                 if self.restart_button.is_clicked(event):
+                    if self.name_input_active:
+                        if self.player_name == "":
+                            # save score to database
+                            add_score("player", self.score)
+                            self.name_input_active = False # disable input box
+                        else:
+                            # save score to database
+                            add_score(self.player_name, self.score)
+                            self.name_input_active = False # disable input box
                     self.reset_game()
                     self.state = "playing"
                 if self.menu_button.is_clicked(event):
+                    if self.name_input_active:
+                        if self.player_name == "":
+                            # save score to database
+                            add_score("player", self.score)
+                            self.name_input_active = False # disable input box
+                        else:
+                            # save score to database
+                            add_score(self.player_name, self.score)
+                            self.name_input_active = False # disable input box
                     self.state = "menu"
+
+                if self.name_input_active:
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_RETURN:
+                            if self.player_name == "":
+                                self.player_name = "player"
+                            # save score to database
+                            add_score(self.player_name, self.score)
+                            self.name_input_active = False # disable input box
+                        elif event.key == pygame.K_BACKSPACE:
+                            self.player_name = self.player_name[:-1]
+                        else:
+                            # only allow alphanumeric characters
+                            if event.unicode.isalnum():
+                                self.player_name += event.unicode
 
 
     def update(self):
@@ -90,6 +138,7 @@ class Game:
 
         if check_collision(self.bird, self.pipes, self.base.y, self.height):
             self.state = "game_over"
+            self.name_input_active = True # add input box to game over screen
 
         for pipe in self.pipes:
             if self.bird.x < pipe.x:
@@ -145,10 +194,11 @@ class Game:
         # buttons and hint under start button
         self.start_button.draw(self.screen)
 
-        hint_font = pygame.font.SysFont("Arial", 24)
+        hint_font = pygame.font.SysFont("Arial", 20)
         hint_text = hint_font.render("or press Space", True, (255, 255, 255))
         self.screen.blit(hint_text, (self.start_button.rect.centerx - hint_text.get_width()//2, self.start_button.rect.bottom + 5))
 
+        self.leaderboard_button.draw(self.screen)
         self.quit_button.draw(self.screen)
 
         pygame.display.update()
@@ -178,7 +228,16 @@ class Game:
         score_text = score_font.render(f"Score: {self.score}", True, (255, 255, 255))
         self.screen.blit(score_text, (self.width//2 - score_text.get_width()//2, 220))
 
+        # input box
+        if self.name_input_active:
+            input_box = pygame.Rect(self.width//2 - 100, 275, 200, 40)
+            pygame.draw.rect(self.screen, (255, 255, 255), input_box)
+            pygame.draw.rect(self.screen, (0, 0, 0), input_box, 2)  # border
 
+            # render current text
+            text_surface = self.input_font.render(self.player_name, True, (0, 0, 0))
+            self.screen.blit(text_surface, (input_box.x + 5, input_box.y + 5))
+        
         # buttons
         self.restart_button.draw(self.screen)
         self.menu_button.draw(self.screen)
@@ -191,3 +250,37 @@ class Game:
         self.pipes = [Pipe(self.width, self.base.y)]
         self.passed_pipes = []
         self.score = 0
+
+    def draw_leaderboard(self):
+        self.screen.fill((135, 206, 250))
+
+        # demo bird, pipes, base 
+        self.demo_bird.draw(self.screen)
+        self.left_demo_pipe.draw(self.screen)
+        self.right_demo_pipe.draw(self.screen)
+        self.base.draw(self.screen)
+
+        # transparent overlay
+        overlay = pygame.Surface((self.width, self.height))
+        overlay.set_alpha(150)
+        overlay.fill((50, 50, 50))
+        self.screen.blit(overlay, (0, 0))
+
+        # title
+        font = pygame.font.SysFont("Arial", 50)
+        title = font.render("Leaderboard", True, (255, 255, 255))
+        self.screen.blit(title, (self.width//2 - title.get_width()//2, 50))
+
+        # get top scores
+        top_ten = top_scores(10)
+
+        score_font = pygame.font.SysFont("Arial", 36)
+        for i, (name, score) in enumerate(top_ten):
+            text = f"{i+1}. {name} - {score}"
+            score_text = score_font.render(text, True, (255, 255, 255))
+            self.screen.blit(score_text, (self.width//2 - score_text.get_width()//2, 150 + i*50))
+
+        # back button
+        self.leaderboard_back_button.draw(self.screen)
+
+        pygame.display.update()
