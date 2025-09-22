@@ -8,7 +8,6 @@ class Bird:
         self.velocity = 0
         self.gravity = 0.25 # velocity change of gravity
         self.jump_str = -6 # jump strength 
-        self.alive = True
 
     def jump(self):
         self.velocity = self.jump_str # bird flap
@@ -16,9 +15,6 @@ class Bird:
     def move(self): 
         self.velocity += self.gravity 
         self.y += self.velocity # new position
-
-    def dead(self): 
-        self.alive = False
 
     def draw(self, screen):
         pygame.draw.rect(screen, (255, 255, 0), (self.x, self.y, 34, 24))  # simple yellow rectangle
