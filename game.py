@@ -3,6 +3,7 @@ import pygame
 from bird import Bird
 from base import Base
 from pipe import Pipe
+from cloud import Cloud
 from utils import check_collision, passed_pipe, Button
 from leaderboard import top_scores, add_score
 
@@ -21,6 +22,8 @@ class Game:
         self.bird = Bird(50, self.height//2 - 10)
         self.base = Base(self.height - 100, 5, self.width)
         self.pipes = [Pipe(self.width, self.base.y)]
+        self.clouds = []
+        self.cloud_timer = 0
 
         self.demo_bird = Bird(self.width//2 - 17, self.height//3)
         self.left_demo_pipe = Pipe(self.width//2 - 150, self.base.y, gap=150)
@@ -135,6 +138,17 @@ class Game:
             if pipe.x < -50:
                 self.passed_pipes.remove(pipe)
                 self.pipes.append(Pipe(self.width, self.base.y))
+        
+        # clouds
+        self.cloud_timer += 1
+        if self.cloud_timer > 90:  # spawn new cloud every 1.5s
+            self.clouds.append(Cloud(self.width, self.height))
+            self.cloud_timer = 0
+
+        for cloud in self.clouds[:]:
+            cloud.move()
+            if cloud.off_screen():
+                self.clouds.remove(cloud)
 
         if check_collision(self.bird, self.pipes, self.base.y, self.height):
             self.state = "game_over"
@@ -150,6 +164,8 @@ class Game:
 
     def draw(self):
         self.screen.fill((135, 206, 250))  # sky blue
+        for cloud in self.clouds:
+            cloud.draw(self.screen)
         self.bird.draw(self.screen)
         self.base.draw(self.screen)
         for pipe in self.passed_pipes + self.pipes:
@@ -164,8 +180,13 @@ class Game:
         score_surface.fill((0, 0, 0, 100))  # black with alpha 100 (semi-transparent)
         score_surface.blit(score_text, (10, 5))
         
-        # centre
+        # centre score background
         self.screen.blit(score_surface, ((self.width - score_surface.get_width()) // 2, 20))
+
+        # transparent overlay to show hitbox of bird
+        rect_surface = pygame.Surface((34, 24), pygame.SRCALPHA)
+        rect_surface.fill((200, 200, 200, 120)) 
+        self.screen.blit(rect_surface, (self.bird.x, self.bird.y))
         
         pygame.display.update()
 
@@ -272,7 +293,7 @@ class Game:
         self.screen.blit(title, (self.width//2 - title.get_width()//2, 50))
 
         # get top scores
-        top_ten = top_scores(10)
+        top_ten = top_scores(8)
 
         score_font = pygame.font.SysFont("Arial", 36)
         for i, (name, score) in enumerate(top_ten):
