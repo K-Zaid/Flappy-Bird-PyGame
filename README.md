@@ -32,13 +32,18 @@ A Python/PyGame remake of Flappy Bird with added features such as modifiers, lea
 ## ▶️ How to Run
 
 1. Clone this repository:
-   `bash`
-   `git clone https://github.com/K-Zaid/Flappy-Bird-PyGame.git`
-   `cd anivia-skillshot-dodging`
+    ```
+    ...> git clone https://github.com/K-Zaid/Flappy-Bird-PyGame.git
+    ...> `cd anivia-skillshot-dodging`
+    ```
 2. Install dependencies:
-   `pip install -r requirements.txt`
+    ```
+    ...> pip install -r requirements.txt
+    ```
 3. Run game:
-   `python main.py`
+    ```
+    ...> python main.py
+    ```
 
 ## 🕹️ Controls
 - **Space** → Flap
@@ -54,10 +59,13 @@ A Python/PyGame remake of Flappy Bird with added features such as modifiers, lea
 ## ⚙️ Requirements
 - Python 3.8+
 - PyGame
-    - Installed via: `pip install -r requirements.txt`
+    - Installed via: 
+    ```
+    ...> pip install -r requirements.txt
+    ```
 
 ## 📜 License
-This project is for educational purposes and personal use.
+This project is for educational purposes and personal use.  
 No copyright infringement intended for the Flappy Bird concept.
 
 
