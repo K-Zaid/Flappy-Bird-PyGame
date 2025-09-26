@@ -1,11 +1,14 @@
 # Game loop and state management
 import pygame
+import random
+import time
 from bird import Bird
 from base import Base
 from pipe import Pipe
 from cloud import Cloud
 from utils import check_collision, passed_pipe, Button
 from leaderboard import top_scores, add_score
+from power import Power
 
 class Game:
     def __init__(self):
@@ -16,7 +19,7 @@ class Game:
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Anivia SkillShot Dodging")
         self.clock = pygame.time.Clock()
-        self.state = "menu" # possible states: menu, leaderboard, playing, game_over
+        self.state = "menu" # possible states: menu, info, leaderboard, playing, game_over
 
         # create game objects
         self.bird = Bird(50, self.height//2 - 10)
@@ -33,13 +36,15 @@ class Game:
         self.passed_pipes = []
         self.score = 0
 
+        # game is running
         self.running = True
 
         # buttons
         font = pygame.font.SysFont("Arial", 30)
+        self.info_button = Button(0, 0, 40, 40, "i", pygame.font.SysFont("Segoe Script", 30))
         self.start_button = Button(self.width//2 - 60, 250, 120, 50, "Start", font)
         self.leaderboard_button = Button(self.width//2 - 60, 350, 120, 50, "Leaderboard", font)
-        self.leaderboard_back_button = Button(0, self.height - 50, 120, 50, "Back", font)
+        self.back_button = Button(0, self.height - 40, 90, 40, "Back", font)
         self.quit_button = Button(self.width//2 - 60, 450, 120, 50, "Quit", font)
         self.restart_button = Button(self.width//2 - 60, 350, 120, 50, "Restart", font)
         self.menu_button = Button(self.width//2 - 60, 450, 120, 50, "Menu", font)
@@ -48,6 +53,49 @@ class Game:
         self.name_input_active = False
         self.player_name = ""
         self.input_font = pygame.font.SysFont("Arial", 30)
+
+        # list of active buffs + debuffs
+        self.active_powers = []
+        self.active_powers_names = []
+
+        # helper variable for buffs + debuffs
+        self.x2points = False
+        self.invisible = False
+        self.manual = False
+        self.tiny_gap = False
+        
+        # load and scale modifier icons
+        ICON_SIZE = (32, 32)  # (width, height)
+
+        self.modifier_icons = {
+            "invincible": pygame.transform.scale(pygame.image.load("assets/images/invincible.png").convert_alpha(), ICON_SIZE),
+            "shield": pygame.transform.scale(pygame.image.load("assets/images/shield.png").convert_alpha(), ICON_SIZE),
+            "slowmo": pygame.transform.scale(pygame.image.load("assets/images/slowmo.png").convert_alpha(), ICON_SIZE),
+            "x2points": pygame.transform.scale(pygame.image.load("assets/images/x2points.png").convert_alpha(), ICON_SIZE),
+            "jump_boost": pygame.transform.scale(pygame.image.load("assets/images/jump_boost.png").convert_alpha(), ICON_SIZE),
+            "rev_grav": pygame.transform.scale(pygame.image.load("assets/images/rev_grav.png").convert_alpha(), ICON_SIZE),
+            "manual": pygame.transform.scale(pygame.image.load("assets/images/manual.png").convert_alpha(), ICON_SIZE),
+            "heavy": pygame.transform.scale(pygame.image.load("assets/images/heavy.png").convert_alpha(), ICON_SIZE),
+            "tiny_gap": pygame.transform.scale(pygame.image.load("assets/images/tiny_gap.png").convert_alpha(), ICON_SIZE),
+            "fast_pipes": pygame.transform.scale(pygame.image.load("assets/images/fast_pipes.png").convert_alpha(), ICON_SIZE),
+            "disappearing_pipes": pygame.transform.scale(pygame.image.load("assets/images/disappearing_pipes.png").convert_alpha(), ICON_SIZE),
+        }
+
+        # dictionary of explanations
+        self.modifier_info = {
+            "invincible": "Cannot collide with objects while active.",
+            "shield": "Protects you from one hit, on hit: invincible for 2 seconds.",
+            "slowmo": "Pipe move speed reduced.",
+            "x2points": "Double points for passing pipes.",
+            "jump_boost": "Flap power increased.",
+            "rev_grav": "Gravity acts upwards, jumping pushes you down.",
+            "manual": "Use up and down arrows to move respectively.",
+            "heavy": "Gravity increased.",
+            "tiny_gap": "Smaller gaps in pipes.",
+            "fast_pipes": "Pipe move speed increased.",
+            "disappearing_pipes": "Pipes vanish and appear again when close to you.",
+        }
+
 
     def run(self):
         # main game loop skeleton
@@ -59,6 +107,8 @@ class Game:
                 self.draw_menu()
             elif self.state == "leaderboard":
                 self.draw_leaderboard()
+            elif self.state == "info":
+                self.draw_info()
             elif self.state == "playing":
                 self.update() # move bird, pipes, base & check collisions
                 self.draw() # draw everything
@@ -78,13 +128,18 @@ class Game:
                     self.state = "playing"
                 if self.leaderboard_button.is_clicked(event):
                     self.state = "leaderboard"
+                if self.info_button.is_clicked(event):
+                    self.state = "info"
                 if self.quit_button.is_clicked(event):
                     self.running = False
             elif self.state == "leaderboard":
-                if self.leaderboard_back_button.is_clicked(event):
+                if self.back_button.is_clicked(event):
+                    self.state = "menu"
+            elif self.state == "info":
+                if self.back_button.is_clicked(event):
                     self.state = "menu"
             elif self.state == "playing":
-                if event.type == pygame.KEYDOWN:
+                if event.type == pygame.KEYDOWN and not self.manual:
                     if event.key == pygame.K_SPACE:
                         self.bird.jump()
             elif self.state == "game_over":
@@ -127,9 +182,18 @@ class Game:
                             if event.unicode.isalnum():
                                 self.player_name += event.unicode
 
+        if self.manual and self.state == "playing":
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_UP]:
+                self.bird.y -= 5   # move up
+                self.bird.rect.centery = self.bird.y
+            if keys[pygame.K_DOWN]:
+                self.bird.y += 5   # move down
+                self.bird.rect.centery = self.bird.y
 
     def update(self):
-        self.bird.move()
+        if not self.manual:
+            self.bird.move(self.base.y)
         self.base.move()
 
         for pipe in self.passed_pipes + self.pipes:
@@ -137,7 +201,10 @@ class Game:
             # reset pipe when it goes off screen
             if pipe.x < -50:
                 self.passed_pipes.remove(pipe)
-                self.pipes.append(Pipe(self.width, self.base.y))
+                if self.tiny_gap:
+                    self.pipes.append(Pipe(self.width, self.base.y, 100))
+                else:
+                    self.pipes.append(Pipe(self.width, self.base.y))
         
         # clouds
         self.cloud_timer += 1
@@ -150,17 +217,130 @@ class Game:
             if cloud.off_screen():
                 self.clouds.remove(cloud)
 
-        if check_collision(self.bird, self.pipes, self.base.y, self.height):
+        if check_collision(self.bird, self.pipes, self.base.y, self.height) and self.bird.shield and not self.bird.invincible:
+            index = next((i for i, p in enumerate(self.active_powers) if p.type == "shield"), None)
+            if index is not None:
+                self.active_powers.pop(index)
+                self.active_powers_names.pop(index)
+            self.remove_power("shield")
+            
+            self.active_powers.append(Power("invincible", 2))
+            self.active_powers_names.append("invincible")
+            self.apply_power("invincible")
+
+        elif check_collision(self.bird, self.pipes, self.base.y, self.height) and not self.bird.invincible:
             self.state = "game_over"
             self.name_input_active = True # add input box to game over screen
+
+            # reset modifiers
+            self.active_powers = []
+            self.active_powers_names = []
+            self.x2points = False
+            self.invisible = False
+            self.manual = False
+            self.tiny_gap = False
 
         for pipe in self.pipes:
             if self.bird.x < pipe.x:
                 break
             if passed_pipe(self.bird, pipe):
-                self.score += 1
+                if self.x2points:
+                    self.score += 2
+                else:
+                    self.score += 1
                 self.pipes.remove(pipe)
                 self.passed_pipes.append(pipe)
+
+                prob = 0.25
+
+                if self.score > 500:
+                    prob = 0.4
+                elif self.score > 100:
+                    prob = 0.3
+
+                if len(self.active_powers) < 1 + self.score//30: 
+                    # maximum possible new powerups
+                    max_new = min(
+                        (1 + self.score // 30) - len(self.active_powers),
+                        11 - len(self.active_powers)
+                    )
+
+                    count = 0
+                    while count < max_new and random.random() < min(prob + count*0.05, 0.7):
+                        available = [
+                            p for p in ["invincible", "shield", "slowmo", "x2points",
+                                        "jump_boost", "rev_grav", "manual",
+                                        "heavy", "tiny_gap", "fast_pipes",
+                                        "disappearing_pipes"]
+                            if p not in self.active_powers_names
+                        ]
+
+                        if not available:  # no unique powers left
+                            break
+
+                        chosen = random.choice(available)
+                        duration = 9999 if chosen == "shield" else 8
+                        self.active_powers.append(Power(chosen, duration))
+                        self.active_powers_names.append(chosen)
+                        self.apply_power(chosen)
+
+                        count += 1
+
+        for power in self.active_powers:
+            if power.expired():
+                self.remove_power(power.type)
+                self.active_powers.remove(power)
+                self.active_powers_names.remove(power.type)
+
+    def apply_power(self, pwr):
+        if pwr == "invincible":
+            self.bird.invincible = True
+        elif pwr == "shield":
+            self.bird.shield = True
+        elif pwr == "slowmo":
+            self.base.speed /= 2
+        elif pwr == "x2points":
+            self.x2points = True
+        elif pwr == "jump_boost":
+            self.bird.jump_str *= 1.35
+        elif pwr == "rev_grav":
+            self.bird.gravity *= -1
+            self.bird.jump_str *= -1
+        elif pwr == "manual":
+            self.manual = True
+        elif pwr == "heavy":
+            self.bird.gravity *= 2
+        elif pwr == "tiny_gap":
+            self.tiny_gap = True
+        elif pwr == "fast_pipes":
+            self.base.speed *= 1.5
+        elif pwr == "disappearing_pipes":
+            self.invisible = True        
+
+    def remove_power(self, pwr):
+        if pwr == "invincible":
+            self.bird.invincible = False
+        elif pwr == "shield":
+            self.bird.shield = False
+        elif pwr == "slowmo":
+            self.base.speed *= 2
+        elif pwr == "x2points":
+            self.x2points = False
+        elif pwr == "jump_boost":
+            self.bird.jump_str /= 1.35
+        elif pwr == "rev_grav":
+            self.bird.gravity *= -1
+            self.bird.jump_str *= -1
+        elif pwr == "manual":
+            self.manual = False
+        elif pwr == "heavy":
+            self.bird.gravity /= 2
+        elif pwr == "tiny_gap":
+            self.tiny_gap = False
+        elif pwr == "fast_pipes":
+            self.base.speed /= 1.5
+        elif pwr == "disappearing_pipes":
+            self.invisible = False   
 
     def draw(self):
         self.screen.fill((135, 206, 250))  # sky blue
@@ -169,7 +349,10 @@ class Game:
         self.bird.draw(self.screen)
         self.base.draw(self.screen)
         for pipe in self.passed_pipes + self.pipes:
-            pipe.draw(self.screen)
+            if self.invisible and pipe.x > 60 and pipe.x < 300:
+                continue
+            else:
+                pipe.draw(self.screen)
 
         # transparent score top middle
         score_font = pygame.font.SysFont("Arial", 40, bold=True)
@@ -183,10 +366,20 @@ class Game:
         # centre score background
         self.screen.blit(score_surface, ((self.width - score_surface.get_width()) // 2, 20))
 
-        # transparent overlay to show hitbox of bird
-        rect_surface = pygame.Surface((34, 24), pygame.SRCALPHA)
-        rect_surface.fill((200, 200, 200, 120)) 
-        self.screen.blit(rect_surface, (self.bird.x, self.bird.y))
+        # draw active modifier icons
+        x, y = 10, 10   # start position (top-left corner)
+        spacing = 42    # space between icons
+
+        for i, modifier in enumerate(self.active_powers):
+            if modifier.type in self.modifier_icons:
+                time_left = modifier.time_left()
+
+                if time_left <= 2:
+                    # blink on/off every 0.3s
+                    if int(time.time() * 3) % 2 == 0:
+                        continue  # skip drawing this frame 
+                
+                self.screen.blit(self.modifier_icons[modifier.type], (x, y + i * spacing))
         
         pygame.display.update()
 
@@ -213,6 +406,7 @@ class Game:
         self.screen.blit(title2, (self.width//2 - title2.get_width()//2, 130))
 
         # buttons and hint under start button
+        self.info_button.draw(self.screen)
         self.start_button.draw(self.screen)
 
         hint_font = pygame.font.SysFont("Arial", 20)
@@ -302,6 +496,59 @@ class Game:
             self.screen.blit(score_text, (self.width//2 - score_text.get_width()//2, 150 + i*50))
 
         # back button
-        self.leaderboard_back_button.draw(self.screen)
+        self.back_button.draw(self.screen)
+
+        pygame.display.update()
+
+    def draw_info(self):
+        self.screen.fill((135, 206, 250))
+
+        # transparent overlay for readability
+        overlay = pygame.Surface((self.width, self.height))
+        overlay.set_alpha(200)
+        overlay.fill((50, 50, 50))
+        self.screen.blit(overlay, (0, 0))
+
+        # title
+        font = pygame.font.SysFont("Arial", 40, bold=True)
+        title = font.render("Modifier Info", True, (255, 255, 255))
+        self.screen.blit(title, (self.width//2 - title.get_width()//2, 20))
+
+        # draw icons + text in a vertical list
+        y = 75
+        spacing = 45
+        text_font = pygame.font.SysFont("Arial", 15)
+
+        for name, icon in self.modifier_icons.items():
+            # icon
+            self.screen.blit(icon, (10, y))
+
+            # description
+            description = self.modifier_info.get(name, "")
+            text_surface = text_font.render(f"{description}", True, (255, 255, 255))
+            self.screen.blit(text_surface, (45, y + 5))
+
+            y += spacing
+
+        # back button
+        self.back_button.draw(self.screen)
+
+        hint1 = "-Shield lasts for 1 hit, other modifiers last for 8 seconds"
+        hint2 = "-Icons will start blinking 2 seconds before expiring"
+
+        surf1 = text_font.render(hint1, True, (255, 255, 255))
+        surf2 = text_font.render(hint2, True, (255, 255, 255))
+
+        # position next to back button
+        a = self.back_button.rect.right + 5  
+
+        # align hint1 with top half
+        b1 = self.back_button.rect.top + self.back_button.rect.height // 4 - surf1.get_height() // 2
+        # align hint2 with bottom half
+        b2 = self.back_button.rect.bottom - self.back_button.rect.height // 4 - surf2.get_height() // 2
+
+        self.screen.blit(surf1, (a, b1))
+        self.screen.blit(surf2, (a, b2))
+
 
         pygame.display.update()

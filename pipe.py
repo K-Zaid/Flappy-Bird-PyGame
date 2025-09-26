@@ -6,7 +6,7 @@ class Pipe:
     def __init__(self, x, base_height, gap=150):
         self.x = x
         self.width = 52 
-        self.top_height, self.gap = get_random_pipe( base_height, gap)
+        self.top_height, self.gap = get_random_pipe(base_height, gap)
 
     def move(self, speed):
         self.x -= speed
