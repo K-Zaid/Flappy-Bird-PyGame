@@ -1,3 +1,4 @@
+# Cloud class
 import pygame
 import random
 

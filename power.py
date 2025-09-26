@@ -1,3 +1,4 @@
+# modifier object 
 import time
 
 class Power:

@@ -1,3 +1,4 @@
+# leaderboard handling functions
 import sqlite3
 
 DB_FILE = "leaderboard.db"
